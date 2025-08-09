@@ -25,16 +25,29 @@ class Card:
         self.number = number
         self.suit = suit
         self.hidden = hidden
-        self.color = Color.RED if suit % 2 == 0 else Color.BLACK
+        self.color = Color.RED if suit.value % 2 == 0 else Color.BLACK
 
     def __str__(self):
-        return ('~' if self.hidden else '') + str(self.number) + ' of ' + Suit(self.suit).name
+        if (self.hidden):
+            return '############'
+        return self.getNumberDisplay() + ' of ' + Suit(self.suit).name
     
     def reveal(self):
         self.hidden = False
 
     def hide(self):
         self.hidden = True
+
+    def getNumberDisplay(self):
+        if self.number == 1:
+            return 'A'
+        elif self.number == 11:
+            return 'J'
+        elif self.number == 12:
+            return 'Q'
+        elif self.number == 13:
+            return 'K'
+        return str(self.number)
 
     # Requirements: 
     # Self is not hidden
@@ -43,16 +56,46 @@ class Card:
     def isValidBaseFor(self, other):
         return not self.hidden and self.color != other.color and self.number == (other.number + 1)
     
-class Column:
-    def __init__(self, 
-                 cards: List[Card] = []):
+class Stack:
+    def __init__(self, cards:List[Card] = []):
         self.cards: List[Card] = cards
 
-    def addStack(self, stack: List[Card]):
-        if len(stack) >= 1 and self.cards[-1].isValidBaseFor(stack[0]):
-            self.cards.extend(stack)
+    def addCards(self, stack: List[Card]):
+        self.cards.extend(stack)
+
+class Foundation(Stack):
+    def __init__(self, suit: Suit, cards: List[Card] = []):
+        super().__init__(cards)
+        self.suit = suit
+
+    def peekTopNumber(self):
+        if (len(self.cards) == 0):
+            return 0
         else:
+            return self.cards[-1].number
+
+    def addCard(self, card: Card):
+        if card and card.suit == self.suit and (self.peekTopNumber() + 1) == card.number:
+            self.addCards([card])
+
+    def takeTopCard(self):
+        if len(self.cards) > 0:
+            return self.cards.pop()
+        return None 
+    
+class Column(Stack):
+    def addStack(self, stack: List[Card]):
+        valid = False
+
+        if len(self.cards) == 0 and len(stack) > 0 and stack[0].number == 13:
+            valid = True
+        elif len(stack) >= 1 and self.cards[-1].isValidBaseFor(stack[0]):
+            valid = True
+        else:
+            valid = False
             raise InvalidMoveError('Cannot place stack')
+        if valid:
+            self.cards.extend(stack)
 
     # stackBase: index of the first thing to remove. Everything after the given index will also be taken.
     def takeStack(self, stackBase: int):
@@ -63,16 +106,13 @@ class Column:
             taken = self.cards[stackBase:]
             del self.cards[stackBase:]
 
-            # reveal the top card
-            self.cards[-1].reveal()
-
             return taken
         else:
             raise InvalidMoveError('Cannot take stack')
 
-    # In case a move is invalid and needs to be undone.    
-    def replaceStack(self, stack: List[Card]):
-        self.cards.extend(stack)
+    def revealTopCard(self):
+        if len(self.cards) > 0:
+            self.cards[-1].reveal()
 
 
 class Table:
@@ -87,6 +127,7 @@ class Table:
         self.maximumColumns = maximumColumns
         self.hand = []
 
+    @staticmethod
     def printCards(cards: List[Card]):
         print([str(card) for card in cards])       
  
@@ -95,9 +136,11 @@ class Table:
         if (self.hand):
             try:
                 self.addHandToColumn(toColumnIndex)
+                self.columns[fromColumnIndex].revealTopCard()
             except InvalidMoveError as e:
                 print(e.args[0])
-                self.columns[fromColumnIndex].replaceStack(self.hand)
+                self.columns[fromColumnIndex].addCards(self.hand)
+            finally:
                 self.hand = []
         
     def moveStackIntoHand(self, fromColumnIndex, cardIndex):
@@ -109,10 +152,14 @@ class Table:
     def addHandToColumn(self, toColumnIndex):
         self.columns[toColumnIndex].addStack(self.hand)
 
-def generateDeck():
+    def draw(self):
+        if len(self.deck) > 0:
+            self.deck[-1].reveal()
+
+def generateDeck() -> List[Card]:
     deck = []
 
-    for suit in range(1, 5):
+    for suit in Suit:
         for number in range(1, 14):
             deck.append(Card(number, suit))
 
@@ -120,7 +167,7 @@ def generateDeck():
 
     return deck
 
-def dealTable(deck: List[Card]):
+def dealTable(deck: List[Card]) -> Table:
     columns = []
 
 # 0 1 2 3 4 5 6
@@ -135,29 +182,48 @@ def dealTable(deck: List[Card]):
             if row != 6:
                 draw.hidden = True
             columns[column].cards.append(draw)
-            
+
+    for card in deck:
+        card.hide()        
+    
     return Table(columns, [], deck)
 
 def revealTable(table: Table):
-    for column in table.columns:
+    for i, column in enumerate(table.columns):
+        print(i)
         Table.printCards(column.cards)
     print('...')
     Table.printCards(table.deck)
  
-    
-
-
 def main():
-    print('hi :)')
+    print('Welcome to SOLITASCII :D')
+    print('Type `quit` to end the program.')
+    print('Example input: `1 4 3` will take from col 1 all cards after and including the 3rd and move them to col 4.')
+    print('Drawing from the deck is not yet supported.')
+    print('Moving cards to the foundation is not yet supported.')
+    print('Hints are not yet supported.')
     deck = generateDeck()
     table: Table = dealTable(deck)
     revealTable(table)
 
-    #table.columns[-1].addStack(table.columns[0].takeStack(1))
-    table.moveStackBetweenColumns(0, 6, 6)
+    move = None
 
-    print('================================')
+    while move is not 'quit':
+        move = input('Your move? ')
+        if move == 'quit':
+            continue
+        elif move == 'draw':
+            table.draw()
+        elif move:
+            parts = move.split(' ')
+            table.moveStackBetweenColumns(int(parts[0]), int(parts[1]), int(parts[2]))
+        revealTable(table)
+        
 
-    revealTable(table)
+    #table.moveStackBetweenColumns(0, 6, 6)
+
+    #print('================================')
+
+    #revealTable(table)
 
 main()
